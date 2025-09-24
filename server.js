@@ -7,13 +7,15 @@ const port = 3000;
 
 // 4. Cria uma rota GET para o caminho raiz ('/') para teste.
 app.get('/', (req, res) => {
-  res.send('Servidor de Upload está no ar!');
-});
+        res.send('Servidor de Upload está no ar!');
+    }
+);
 
 // 5. Inicia o servidor e o faz "escutar" por requisições na porta definida.
 app.listen(port, () => {
-  console.log(`Servidor rodando em http://localhost:${port}`);
-});
+        console.log(`Servidor rodando em http://localhost:${port}`);
+    }
+);
 
 //---------------- primeira parte ----------------
 
@@ -24,19 +26,22 @@ const multer = require('multer');
 
 // Configura como os arquivos serão armazenados no disco.
 const storage = multer.diskStorage({
-  // 'destination' define a pasta de destino do arquivo.
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  // 'filename' define como o arquivo será nomeado.
-  filename: function (req, file, cb) {
-    // Usamos a data atual (timestamp) + extensão original para um nome único.
-    cb(null, Date.now() + path.extname(file.originalname));
-  }
+        // 'destination' define a pasta de destino do arquivo.
+        destination: function (req, file, cb) {
+            cb(null, 'uploads/');
+        },
+        // 'filename' define como o arquivo será nomeado.
+        filename: function (req, file, cb) {
+            // Usamos a data atual (timestamp) + extensão original para um nome único.
+            cb(null, Date.now() + path.extname(file.originalname));
+    }
 });
 
 // Cria a instância do Multer, passando a configuração de armazenamento.
-const upload = multer({ storage: storage });
+const upload = multer({ 
+        storage: storage 
+    }
+);
 
 //---------------- segunda parte ----------------------
 
@@ -44,14 +49,15 @@ const upload = multer({ storage: storage });
 // 'upload.single('meuArquivo')' é o middleware que processa UM ('single') 
 // arquivo vindo do campo 'meuArquivo'.
 app.post('/upload', upload.single('meuArquivo'), (req, res) => {
-  // Se 'req.file' não existir, o upload falhou ou nenhum arquivo foi enviado.
-  if (!req.file) {
-    return res.status(400).send('Nenhum arquivo enviado.');
-  }
+        // Se 'req.file' não existir, o upload falhou ou nenhum arquivo foi enviado.
+        if (!req.file) {
+            return res.status(400).send('Nenhum arquivo enviado.');
+        }
 
-  // Se o upload for bem-sucedido, envia uma resposta de sucesso.
-  res.send(`Arquivo ${req.file.filename} enviado com sucesso!`);
-});
+        // Se o upload for bem-sucedido, envia uma resposta de sucesso.
+        res.send(`Arquivo ${req.file.filename} enviado com sucesso!`);
+    }
+);
 
 //--------------- teste no insominia -----------------------
 
