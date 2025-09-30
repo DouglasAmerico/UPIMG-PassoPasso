@@ -1,137 +1,84 @@
-const express = require('express');
-const multer = require('multer'); 
-const path = require('path');
-const app = express();
-const port = 3000;
-
-const fs = require('fs'); // [SLIDE 9] Módulo 'fs' para criação de pastas (Aula 2)
-
-// [SETUP] Middleware essencial para ler JSON (embora não seja usado para upload, é boa prática)
-app.use(express.json());
-
-// ----------------------------------------------------------------------
-// MÓDULO 1: CONFIGURAÇÃO DO MULTER E DISKSTORAGE (Aulas 1 e 2)
-// ----------------------------------------------------------------------
-
-// [SLIDE 9/10 - Aula 2] Função para garantir que a pasta de destino exista
-const createUploadDirectory = (dir) => {
-    // Checa se a pasta existe. (!fs.existsSync(caminho))
-    if (!fs.existsSync(dir)) {
-        // Se não existir, cria a pasta recursivamente.
-        fs.mkdirSync(dir, { recursive: true });
-        console.log(`Diretório ${dir} criado com sucesso.`);
-    }
-};
-
-
-const storage = multer.diskStorage({
-    // [SLIDE 10 - Aula 2] A função 'destination' é onde a lógica do 'fs' é injetada.
-    destination: function (req, file, cb) {
-        const uploadDir = 'uploads/';
-        createUploadDirectory(uploadDir); // Garante que a pasta exista!
-        cb(null, uploadDir); 
-    },
-    
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
-});
-
-// [SLIDE 4/5 - Aula 2] O Guardião: Função para validar o tipo de arquivo (MIME type).
+// A função fileFilter recebe (requisição, arquivo, callback)
 const fileFilter = (req, file, cb) => {
-    // Permite apenas JPG ou PNG (tipos mais comuns para imagens web).
+    // 1. Verifica se o mimetype do arquivo é um dos permitidos (JPG ou PNG)
     if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
+        // Se for válido, chama o callback (cb) com 'null' para indicar que está OK (sem erro)
         cb(null, true); 
     } else {
-        // Rejeita o arquivo com uma mensagem de erro.
+        // Se não for válido, chama o callback (cb) com um erro e 'false' para rejeitar
+        // A mensagem de erro será capturada pelo Express posteriormente.
         cb(new Error('Tipo de arquivo inválido. Apenas JPG e PNG são permitidos.'), false);
     }
 };
 
-// [SLIDE 7 - Aula 2] O Controle: Define os limites de segurança.
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB em bytes
+// ... e a sua adição na configuração do Multer:
+const upload = multer({ 
+    // ...
+    fileFilter: fileFilter 
+    // ...
+});
 
-// Cria a instância do Multer com todas as configurações de segurança.
+
+
+
+// Define a constante para o tamanho (5 Megabytes em bytes)
+// 1 byte = 1, 1 Kilobyte = 1024 bytes, 1 Megabyte = 1024 KB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
 const upload = multer({ 
     storage: storage,
-    fileFilter: fileFilter, // Aplica o filtro de tipo (Aula 2)
+    fileFilter: fileFilter,
     limits: { 
-        fileSize: MAX_FILE_SIZE, // Limite de tamanho (Aula 2)
-        files: 1 // Apenas um arquivo por vez
+        fileSize: MAX_FILE_SIZE, // Limite o tamanho do arquivo para 5MB
+        files: 1 // Limite a quantidade de arquivos para 1 por requisição
     }
 });
 
-// ----------------------------------------------------------------------
-// MÓDULO 2: ROTAS (Aulas 1 e 2)
-// ----------------------------------------------------------------------
 
-app.get('/', (req, res) => {
-  res.send('Servidor de Upload está no ar!');
+// Importa o módulo nativo File System (fs)
+const fs = require('fs'); 
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const uploadDir = 'uploads/';
+        
+        // 1. Checa se a pasta existe. (!fs.existsSync(caminho))
+        if (!fs.existsSync(uploadDir)) {
+            // 2. Se não existir, cria a pasta de forma síncrona.
+            // A opção { recursive: true } cria subpastas se necessário (boa prática).
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        
+        // 3. Chama o callback para dizer ao Multer onde salvar.
+        cb(null, uploadDir); 
+    },
+    // ... lógica de filename (da Aula 1) continua aqui ...
 });
 
-
-// [SLIDE 9 - Aula 1 | SLIDE 11 - Aula 2] Rota para upload de UM ÚNICO arquivo (com tratamento de erro).
-app.post('/upload-single', (req, res) => {
-    
-    // Uso da função 'upload.single' envolvida para capturar erros.
-    // 'meuArquivo' deve ser o 'key' do campo no formulário multipart/form-data.
+//Vamos envolver nossa rota com um bloco try/catch usando um middleware especial.
+// Importe o multer e configure 'upload' como antes
+// const upload = multer({...});
+app.post('/upload', (req, res) => {
+    // Usa 'upload.single' (ou array) e captura o erro:
     upload.single('meuArquivo')(req, res, function (err) {
-        
-        // --- 1. TRATAMENTO DE ERROS DO MULTER ---
+
+        // 1. Verifica se houve erro DO MULTER
         if (err instanceof multer.MulterError) {
-            // Erros automáticos do limits (ex: LIMIT_FILE_SIZE)
+            // Retorna um erro 400 (Bad Request) com o código do erro.
             return res.status(400).send({ 
-                message: `Erro do Multer: ${err.code}. Tente novamente.` 
+                message: `Erro do Multer: ${err.code}`,
+                detail: err.message 
             });
         } 
         
-        if (err) {
-            // Erro customizado do fileFilter (ex: 'Tipo de arquivo inválido.')
-            return res.status(400).send({ message: err.message });
-        }
-        // --- FIM DO TRATAMENTO DE ERROS ---
+        // 2. Verifica se houve erro do fileFilter ou outro erro genérico
+        if (err) { return res.status(400).send({ message: err.message }); }
 
+        // 3. Sucesso: Se tudo deu certo, continue a lógica da sua rota
+        if (!req.file) { return res.status(400).send('Nenhum arquivo enviado.'); }
 
-        // Se chegou aqui, o upload foi um sucesso (ou nenhum arquivo foi enviado).
-        if (!req.file) {
-            return res.status(400).send('Nenhum arquivo enviado. Verifique se o campo é "meuArquivo".');
-        }
-
-        res.status(200).send(`Arquivo ${req.file.filename} enviado com sucesso! Caminho: ${req.file.path}`);
+        res.send(`Arquivo ${req.file.filename} enviado com sucesso!`);
     });
 });
 
 
-// [SLIDE 13 - Aula 2] Rota para upload de MÚLTIPLOS arquivos (Exemplo de expansão)
-app.post('/upload-multi', (req, res) => {
-    
-    // O Multer aceita até 5 arquivos do campo 'minhasFotos'.
-    upload.array('minhasFotos', 5)(req, res, function (err) {
-        
-        // ... (O tratamento de erro do Multer é o mesmo aqui) ...
-        if (err instanceof multer.MulterError) {
-            return res.status(400).send({ message: `Erro do Multer: ${err.code}.` });
-        } 
-        if (err) {
-            return res.status(400).send({ message: err.message });
-        }
-
-        // Se chegou aqui, a array de arquivos está em req.files
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).send('Nenhum arquivo enviado.');
-        }
-
-        const fileNames = req.files.map(file => file.filename);
-        
-        res.status(200).send({ 
-            message: "Arquivos enviados com sucesso!",
-            files: fileNames
-        });
-    });
-});
-
-
-
-app.listen(port, () => {
-  console.log(`Servidor rodando em http://localhost:${port}`);
-});
